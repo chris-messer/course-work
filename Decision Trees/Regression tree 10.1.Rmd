@@ -1,0 +1,147 @@
+---
+title: "Homework 7"
+author: "Chris Messer"
+date: "2022-10-06"
+output: html_document
+---
+
+# Question 10.1
+
+*Using the same crime data set uscrime.txt as in Questions 8.2 and 9.1, find the best model you can using (**a) a regression tree model,** and (b) a random forest model.*
+
+*\
+In R, you can use the tree package or the rpart package, and the randomForest package. For each model, describe one or two qualitative takeaways you get from analyzing the results (i.e., don't just stop when you have a good model, but interpret it too).*
+
+> **Regression Tree -** Our final regression tree gives us a cross validated r^2^ value of .56 for data points with a Po1 value of less than 7.65, and a r^2^ value of .71 for data points with Po1 value greater than 7.65. See analysis for takeaways
+
+> **Random Forest** - This gave an r^2^ of .65 for data points with a Po1 \< 7.65 and .35 for points with Po1 \>7.65.
+>
+> *(excerpt from analysis below)* So what model do we choose? It depends on our desired outcome. We may desire to use a blended approach - a single tree/regression model for values with Po1 \> 7.65, as that gave us the most accurate model (even after cross validation). And then we could use a random forest model for data points with Po1 \<7.65. But we do lose something here- we lose explain ability. With single tree models, it is a lot easier to explain to an end user or decision maker how you are coming up with your estimates compared to a random forest model. See analysis for takeaways.
+
+## Regression Tree Analysis
+
+```{r}
+data = read.csv('uscrime.txt', sep = '\t')
+library(DAAG)
+library(tree)
+library(rpart.plot)
+str(data)
+```
+
+```{r}
+m1 <- tree(Crime~. , data = data, )
+m1
+```
+
+```{r}
+plot(m1)
+text(m1)
+
+```
+
+Now let's see how well this model performed. It does not look like tree() has a fitted() attribute, so we will have to manually calculate our r^2^ value.
+
+```{r}
+yhat <- predict(m1)
+
+SSresidual <- sum((yhat - data$Crime)^2)
+SStotal <- sum((data$Crime-mean(data$Crime))^2)
+m1.r2 <- 1-SSresidual/SStotal
+m1.r2
+```
+
+This doesn't look too bad! Hover, over fitting is a common issue with regression trees, and the r^2^ value calculated above is on the full data set. Since the tree() function gives the best model by default, lets look how the models with fewer trees performed. Rather than looking at their r^2^ values, lets just compare the deviance values to eachother since that is the defaul output of this package, and should give us the same information comparatively.
+
+```{r}
+m1.prune <- prune.tree(m1)
+plot(m1.prune)
+```
+
+As suspected, adding more leaf nodes continues to reduce the error. This makes sense when you think about it- ultimately, we could continue to split our data over and over again, until we had one leaf node per data point. If we were to calculate the r^2^ value, we would have 100%, since every data point would be correct. Does that make it a helpful model? No!
+
+So we should probably cross validate our model before reporting on it's accuracy.
+
+```{r}
+set.seed(1)
+m1.cv <- cv.tree(m1)
+plot(m1.cv)
+```
+
+Now we can clearly see, just adding more leaf nodes does not magically reduce the deviance of th model (and thus the r^2^). From the above, it looks like we would be better off using a tree with only 2 leaf nodes rather than 7. In general, it's best to use the smallest number of leafs that returns the smallest variance. If we had only marginally lower variance with 3x the leafs, we should still pick the lower leaf (simpler) model to prevent overfitting.
+
+Now lets build out a tree with only 2 terminal nodes and calculate it's r^2^.
+
+```{r}
+m2 <- prune.tree(m1, best = 2)
+plot(m2)
+text(m2)
+
+m2.yhat <- predict(m2)
+m2.SSresidual <- sum((m2.yhat - data$Crime)^2)
+m2.r2 <- 1 - m2.SSresidual/SStotal
+m2.r2
+```
+
+Yikes, an r^2^ of only .36, still not very good. Why did we get such a low r^2^ if this was supposed to be the best option? Look at what the model is actually doing. It is just using one feeature, Po1, to predict crime. If it is less than 7.65, then assume the crime is 669.6, and if it is greater, assume crime is 1131.0. Not very useful for a supposed AI/ML algorithm!
+
+So instead of just using the average of the all the data point where Po1 is less than 7.65, lets try making a linear regression using those data points in each leaf!
+
+```{r}
+summary(m2)
+leaf1 <- data[which(m2$where == 2),]
+leaf2 <- data[which(m2$where == 3),]
+
+```
+
+So which variables should we use? Well, I am going to cheat a little bit here. Fortunately, R gives us a package that does an exhaustive search fo the best combination of predicting variables to use. I won't go into too much detail about this package, but we will use it to select the best combination of predictors for each leaf.
+
+```{r}
+
+library(leaps)
+leaps.lm1.leaf1 <- leaps(leaf1[,1:15],leaf1$Crime,nbest = 1)
+which.min(leaps.lm1.leaf1$Cp)
+leaps.lm1.leaf1$which[5,]
+```
+
+Just wanted to show you an example output of leaps. It is telling us that 5 predictors is the best combination, with those five being coulmns 2, 3, 8, 14, 15 from the crime dataset.
+
+```{r}
+#build a dataset with just those variables
+lm1.leaf1.data <- cbind(data[,which(leaps.lm1.leaf1$which[5,] == T)], Crime = data[,16])
+#create the linear regression model
+lm1.leaf1 <- lm(Crime~., data = lm1.leaf1.data)
+summary(lm1.leaf1)
+
+#cross validate and calculate the r^2 value for
+lm1.leaf1.cv <- cv.lm(lm1.leaf1.data, lm1.leaf1, m=5, seed=10, printit=F, plotit =F)
+SSres1 <- attr(lm1.leaf1.cv,"ms")*nrow(leaf1)
+SStotal1 <- sum((lm1.leaf1.data$Crime - mean(lm1.leaf1.data$Crime))^2)
+rs1 <- 1- SSres1/SStotal1
+rs1
+
+```
+
+```{r}
+#do the same thing for leaf 2
+leaps.lm1.leaf2 <- leaps(leaf2[,1:15],leaf2$Crime,nbest = 1)
+which.min(leaps.lm1.leaf2$Cp)
+leaps.lm1.leaf1$which[7,]
+```
+
+```{r}
+#do the same thing for leaf 2
+lm1.leaf2.data <- cbind(data[,which(leaps.lm1.leaf2$which[7,] == T)], Crime = data[,16])
+lm1.leaf2 <- lm(Crime~., data = lm1.leaf2.data)
+summary(lm1.leaf2)
+lm1.leaf2.cv <- cv.lm(lm1.leaf2.data, lm1.leaf2, m=5, seed=10, printit=F, plotit =F)
+SSres2 <- attr(lm1.leaf2.cv,"ms")*nrow(leaf2)
+SStotal2 <- sum((lm1.leaf2.data$Crime - mean(lm1.leaf2.data$Crime))^2)
+rs2 <- 1- SSres2/SStotal2
+rs2
+```
+
+And there it is. Our final regression tree gives us a cross validated r^2^ value of .56 for data points with a Po1 value of less than 7.65, and a r^2^ value of .71 for data points with Po1 value greater than 7.65. We could further calculate the r^2^ value of the model as a whole, but I don't think that is necessary for this assignment. We have a pretty strong model at this point!
+
+Other things we could have done is use PCA to reduce the features we input into our linear regression model, rather than using leaps. However, I opted to use leaps instead because in last weeks assignment we saw PCA was not particularly effective in giving us a stronger model.
+
+\

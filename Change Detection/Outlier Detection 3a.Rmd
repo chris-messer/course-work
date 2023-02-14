@@ -1,0 +1,61 @@
+---
+title: "Homework Week 3a"
+Author: "Chris Messer"
+output: html_document
+date: "2022-09-08"
+---
+
+# Homework Question 5.1
+
+*Using crime data from the file uscrime.txt (<http://www.statsci.org/data/general/uscrime.txt>, description at <http://www.statsci.org/data/general/uscrime.html>), test to see whether there are any outliers in the last column (number of crimes per 100,000 people).  Use the grubbs.test function in the outliers package in R.*
+
+> Using grubbs.test, we get a p value of .079. As this is not below the standard threshold of .05, we can accept the null hypothesis that there are no outliers in our data set that are statistically significant.
+
+## Analysis
+
+First, lets load in the data and look at the structure
+
+```{r}
+library(outliers)
+```
+
+```{r}
+crime <- read.csv('uscrime.txt', sep = "\t")
+summary(crime)
+```
+
+Now, lets do some exploratory data analysis and see if there any data points that visually appear to be outliers.
+
+```{r}
+boxplot(crime[,16],
+        main = "Number of offenses per 100,000 population in 1960, by State",
+        notch = TRUE,
+        ylab = "Crime",
+        xlab = "Offenses per 100,000",
+        horizontal = TRUE)
+```
+
+It does seem that there are several points that could be outliers, as there are three points that exceed the third quartile of other data points.
+
+Now, lets do some more statistical measurements to see if these are statistically significant outliers. I'd like to use grubbs test, but first we need to exam the data to see if it is "psuedo normal", i.e. see if it follows a normal distribution even remotely, as that is a requirement of grubbs test.
+
+```{r}
+d <- density(crime[,16])
+plot(d)
+```
+
+Plotted on a density map, our data does appear to have a normal distribution with a slight right skew. However, it is normal enough for grubbs test.
+
+First, lets look at outliers on the right:
+
+```{r}
+grubbs.test(crime[,16], type = 10)
+```
+
+Our p value is greater than .05, thus we accept the null hypothesis that there are no outliers that are statistically significant.
+
+```{r}
+grubbs.test(crime[,16], , opposite = TRUE)
+```
+
+On the left, there is nothing to consider as an outlier as the p value is 1.

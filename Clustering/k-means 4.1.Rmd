@@ -1,0 +1,108 @@
+---
+title: "Homework Week 2, Question 4"
+output: html_document
+date: "2022-09-05"
+---
+
+# Question 4.1
+
+*Describe a situation or problem from your job, everyday life, current events, etc., for which a clustering model would be appropriate. List some (up to 5) predictors that you might use.*
+
+> My wife is a Realtor, and often times she must send out marketing campaigns to her lead database. This database includes information such as:
+>
+> 1.  Year they last purchased
+> 2.  Annual Income
+> 3.  Size of current house
+> 4.  Number of family members
+> 5.  Location (Lattitude/ Longitude)
+> 6.  Age
+>
+> This information could all be used as predictors to segment her leads into different groups so she could tailor her messages to various groups. For example, her message to somone who just bought a new home this year, has a newborn baby, and lives in a 2b1b probably does not want to see the newest million dollar listing. They would be better off only getting a christmas card from my wife so her name sticks in their head for when they are ready to buy their new home.
+>
+> Conversely, she may find a cluster of leads who have been in their house for around 5 years, have \$400k+ of annual income, and lives in a 5k sqft home. This person may be VERY interested in what their home is worth now and what homes in their price range are now on the market if they are looking for an upgrade.
+
+# Question 4.2
+
+*The iris data set iris.txt contains 150 data points, each with four predictor variables and one categorical response. The predictors are the width and length of the sepal and petal of flowers and the response is the type of flower. The data is available from the R library datasets and can be accessed with iris once the library is loaded. It is also available at the UCI Machine Learning Repository (<https://archive.ics.uci.edu/ml/datasets/Iris> ). The response values are only given to see how well a specific method performed and should not be used to build the model.*
+
+*Use the R function kmeans to cluster the points as well as possible. Report the best combination of predictors, your suggested value of k, and how well your best clustering predicts flower type.*
+
+> Per the below analysis, it appears the best value of K is k = 3, and the best predictors of species is *not* all of the measures, rather just petal length and width, which has a 96% accuracy.
+
+## Analysis
+
+First, lets take a look at the data we have to work with.
+
+```{r}
+head(iris)
+```
+
+Looks like we have 4 values that can be used to determine the Species. I'd like to look into what combination provides the best result. Should we use all four? Just the Sepal info? Or just the Petal info?
+
+As a note, kmeans is an unsupervised learning method - we are going to assume we are building this model out to determine how many potential classifications there could be, rather than determining what classification the flower *is* given a set of data points. As such, we will only use the species information in determining which model is most accurate rather than using that information in our training data.
+
+### To scale, or not to scale?
+
+Typically, it is a good idea to scale data before using algorithms that are driven by distance, as the distance between predictors is not always 1:1. For example, if our data consisted of one measure in miles, and one measure in temperature, the delta of mile means something entirely different than a delta of 1 degree, so we scale the measures to make them equivalent.
+
+However, with our iris data set, all measures are in the same measure of length, so scaling would not be appropriate, as we would lose the nuance of the distance measurements.
+
+### Determine how many classes to use
+
+First, we want to see what the best value of k is to use. i.e. how many species should we separate iris flowers into? We will do this by using the "elbow" method, i.e. seeing what value of k gives the least sum of squares (distance between the points and the centroid) for each value of k, before our results begin to diminish.
+
+```{r}
+k_list <- c(1:10)
+ss <- c()
+for (K in seq_along(k_list)){
+  k_means.model.1 <- kmeans(iris[,1:4],K)
+  ss[K] <- k_means.model.1$tot.withinss
+}
+plot(ss)
+```
+
+As we can see above, k = 3 seems to give us the most bang for our buck. Lets compare that to how many species there *actually* is in the data set.
+
+```{r}
+length(unique(iris$Species))
+```
+
+As it appears, there is only 3 different species of iris flowers! As such, we will use k= 3 for our models below.
+
+### Using Sepal and Petal Data
+
+First, I'd like to see how accurate a model would be if we used all of the available data to predict what species a flower is given a new set of data. First we need to build the model.
+
+```{r}
+set.seed(123)
+k_means.model.1 <- kmeans(iris[,1:4],3)
+k_means.model.1
+```
+
+Now, let's compare our predictions against actual species classifications
+
+```{r}
+table(k_means.model.1$cluster, iris$Species)
+```
+
+It appears we have 125 data points (50 + 48 + 36) classified correctly, and 38 (36 + 2) classified incorrectly, giving us a 89% accuracy.
+
+### Sepal Length/Width
+
+Now we will do the same for just sepal length/width.
+
+```{r}
+k_means.model.2 <- kmeans(iris[,1:2],3)
+table(k_means.model.2$cluster,iris$Species)
+```
+
+Using Sepal length/width, we get 123 correct classifications, giving us an accuracy 82%
+
+### Petal Length/Width
+
+```{r}
+k_means.model.3 <- kmeans(iris[,3:4],3)
+table(k_means.model.3$cluster,iris$Species)
+```
+
+Using just the petal length and width, we get 142 correct classifications and 8 incorrect, for an accuracy of 94.5%. Therefore, this is the best indicator of classification.

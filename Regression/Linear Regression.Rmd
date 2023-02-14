@@ -1,0 +1,221 @@
+---
+title: "Homework Week 5"
+author: "Chris Messer"
+date: "2022-09-25"
+output: html_document
+---
+
+# Question 8.1
+
+*Describe a situation or problem from your job, everyday life, current events, etc., for which a linear regression model would be appropriate. List some (up to 5) predictors that you might use.*
+
+> I work in a consulting, and in the last two years, the job market has been very hot. Multiple times a day, offers to interview would come through, but there was always a nagging question- how much should I be asking for salary?
+>
+> A linear regression model would be highly effective at taking salary data from people in the same profession, and information regarding the individual, and create a model to predict salary. One such dataset can be found at <https://www.big4transparency.com>.
+>
+> Some of the model inputs could be:
+>
+> 1.  Age
+> 2.  Years of Experience
+> 3.  Title
+> 4.  Ethnicity
+> 5.  Gender
+> 6.  Industry
+> 7.  Tier of FirmE
+> 8.  Experienced Hire/Homegrown
+> 9.  Hours per week worked
+
+# Question 8.2
+
+*Using crime data from <http://www.statsci.org/data/general/uscrime.txt> (file uscrime.txt, description at <http://www.statsci.org/data/general/uscrime.html> ), use regression (a useful R function is lm or glm) to predict the observed crime rate in a city with the following data:*
+
+*M = 14.0 So = 0 Ed = 10.0 Po1 = 12.0 Po2 = 15.5 LF = 0.640 M.F = 94.0 Pop = 150 NW = 1.1 U1 = 0.120 U2 = 3.6 Wealth = 3200 Ineq = 20.1 Prob = 0.04 Time = 39.0*
+
+*Show your model (factors used and their coefficients), the software output, and the quality of fit.*
+
+*Note that because there are only 47 data points and 15 predictors, you'll probably notice some overfitting. We'll see ways of dealing with this sort of problem later in the course.*
+
+> The model I determined was best is:
+>
+> y= m105.02+Ed196.47+Po1\*115.02+U2\*89.37+Ineq67.65+Prob\*-3801.84-5040.5
+>
+> The output of the model is below under subheading *Linear Model 2.* It has an R\^2 valueof .69, meaning 69% of the variation in the observed values is due to the inputted dimensions.
+
+First, lets import the data and look at a summary of it.
+
+```{r}
+crime_data <- read.csv('uscrime.txt', sep="\t")
+summary(crime_data)
+```
+
+## Linear Model - Method 1
+
+Now, lets start building our linear regression model. For this first model we will use all columns for our predictors.
+
+```{r}
+lm_model <- lm(Crime~., crime_data)
+```
+
+Now, lets go ahead and store our predictor point that the question asked us to predict a crime rate for into a new variable, so that we can call predict() on it later.
+
+#### A note on scaling
+
+Should we scale our data? Scaling is not particularly needed in a linear regression. In fact, I don't believe it will change the model performance at all! However, that doesn't mean it is *useless.* When we get our coefficients from our model, if we do not scale our data, we cannot compare our coefficients to one another to determine which coefficients are more impactfull to our model. However, if we scale them, we can directly compare our coefficients against one another to determine which ones are more important. For example, if a scaled coefficient was close to 0, it is not causing much variation in y.
+
+However, if we did not scale our data, a coefficient of .0000001 may still be significant, if the input we are multiplying it by is recorded ina high degree. For example, if the input value was centimeters to the sun, multiplying it by .0000001 would still yield a large number and thus be relevant to our y value.
+
+```{r}
+new_data <- data.frame(M = 14.0,So = 0, Ed = 10.0, Po1 = 12.0, Po2 = 15.5,LF = 0.640, M.F = 94.0, Pop = 150, NW = 1.1, U1 = 0.120, U2 = 3.6, Wealth = 3200, Ineq = 20.1, Prob = 0.040,Time = 39.0)
+```
+
+Now that our model is built and we have our point stored we want to predict, lets see what we get.
+
+```{r}
+predict1<-predict(lm_model, new_data)
+predict1
+```
+
+Interesting... our predicted crime rate seems pretty low compared to what was in our data set. Lets lay it over the other crime rates for a sanity check.
+
+```{r}
+library('ggplot2')
+p <- ggplot(as.data.frame(crime_data$Crime), aes(x=crime_data$Crime)) + 
+  geom_boxplot()
+p + geom_point(aes(x=predict1[[1]], y = 0), colour="red")
+```
+
+As expected, it is almost half of what the next highest crime rate is.
+
+## Exploratory Data Analysis
+
+Lets dive into this a little more. There are two potential explanations for this. Either the predictors we gave the linear model do in fact indicate our predicted crime rate should be lower, or we are overfitting our model using predictors that don't impact crime rate very well, and thus, randomness in our training data for these coefficients is causing an artificially low predicted crime.
+
+### Crime Rate *Should* be lower
+
+In order to see how our testing point compares to the training points, I've plotted them against the training data for each predictor.
+
+```{r}
+
+#combine the datasets
+new_data_pred <- new_data
+new_data_pred$Crime <- predict1[[1]]
+combined <- rbind(crime_data,new_data_pred)
+
+#scale the data so we can plot on the same chart
+scaled_crime <- data.frame(scale(combined))
+
+#create the boxplot
+library('reshape2')
+ggplot(melt(scaled_crime[1:47,]), aes(x = variable, y = value)) +
+  geom_boxplot() + geom_point(data = melt(scaled_crime[48,]), aes(x=variable, y = value), colour="blue")
+
+```
+
+None of the dimensions in out test data point are less than *or* greater than the lowest/highest datapoint in the training data. As such, it is easy to conclude that this was a result of an overfit model. If none of the input values of our test data are lower (or higher in the case of a negatively correlated factor) than the test point, it would not be reasonable to observe a predicted crime rate less than all other observed data points.
+
+### Model is over-fit, too many predictors
+
+Since it is difficult to tell whether our model predicted a low crime rate appropriatly just based on comparing our test values to our training values, let's take a more statistical approach.
+
+First I'd like to take a closer look at how are variables correlate with crime individually, to see if some of them are stronger than others.
+
+```{r}
+
+library(corrplot)
+
+crime_data.cor <- cor(crime_data)
+corrplot(crime_data.cor)
+```
+
+If we look at the far right column/bottom row, we can see how each variable correlates with crime individually. Right off the bat, we can see some winners and some losers. It appears NW (percentage of non-white population), U1 (unemployment rate of youth aged 14- 24), both have a very weak correlation to the crime rate. Conversely, Po1 and Po2 (police spending in 1960 and 1959, respectively), and Wealth (median value of household assets) all have a strong positive correlation with crime, and Prob (probability of imprisonment) has a strong negative correlation with crime.
+
+### Additional Notes on correlation plot
+
+It is important to note that correlation \<\> causation. For example, even though there is a strong correlation in police spending and crime, is it accurate to say that more police spending results in more crime? Or that more crime results in more police spending? Or does lowering police spending decrease crime? None of these are accurate. More likely, more police spending results in a higher *reported* crime rate.
+
+Some other interesting things to point out:
+
+1.  U1 and U2 are highly positively correlated. This makes sense, because this is the unemployment rate between 14-24 yearolds and 24+ year olds. It is reasonable to assume that if unemployment is high in one of those groups, it is also high in the other group, since unemployment is caused by macroeconomic factors that impact both age groups.
+
+2.  PO1 and PO2 are highly correlated, since this is police spending in Y1 and Y2. This would be reasonably correlated, since high spending in one year liekly leads to high spending in the next in regards to police, as a drastic change would likely only come from sweeping political changes.
+
+3.  Wealth and Education have a strong positive correlation. This is reasonable, given higher education opens opportunities for more income.
+
+4.  Southern states have a higher probability of being committed to prison for an offense. This likely comes from "tough on crime" attitude of conservative lawmakers.
+
+5.  Higher wealth correlates strongly in a positive direction with police spending. Since police spending is a piblic funded expense, it is reasonable to assume that higher income areas would lead to higher budgets for police.
+
+### Reducing Dimensionality
+
+To get a better model, lets remove some of the factors that are not heavily correlated with crime. While we could use the above correlation plot, lets take a more statistical approach - observing the p-values of the linear regression model, and removing the dimensions that are not relevant.
+
+```{r}
+sum1 <- summary(lm_model)
+sum1
+```
+
+As seen in the above output, some of the p values are significantly higher than others. Lets plot them out to see if there is a clear pattern.
+
+```{r}
+
+library(ggrepel)
+coeffs<-as.data.frame(sum1$coefficients[2:16,4])
+
+ggplot((coeffs), aes(rownames(coeffs),coeffs[,1])) +
+  geom_point() + geom_text_repel(aes(label = rownames(coeffs)))  + geom_hline(yintercept=.15, linetype="solid", color = "red")
+
+
+```
+
+Visually, it is pretty easy to separate these coefficients. Lets draw an arbitrary line, and toss out any predictors that have a p-value of .15 or greater. These are not particularly relevant to predicting crime, and thus including skews our prediction. This is because of the degree of randomness in our training data, if we included them we are baking in that randomness to our predicted point.
+
+## Linear Model 2
+
+So now, lets make a second linear model and only use the predictors that were below p value of .15.
+
+```{r}
+lm_model2 <- lm(Crime~M+Ed+Po1+U2+Ineq+Prob, crime_data)
+summary(lm_model2)
+```
+
+Looking at our summary, the Rsquared value is similar to our original model (this is expected) but our p value of the coefficients are all significantly closer to 0, with no obvious outliers. Now, lets again predict our test point.
+
+y= m105.02*+*Ed196.47+Po1\*115.02+U2\*89.37+Ineq67.65+Prob\*-3801.84-5040.5
+
+```{r}
+predict2 <- predict(lm_model2, new_data)
+predict2[[1]]
+predict2
+```
+
+```{r}
+p <- ggplot(as.data.frame(crime_data$Crime), aes(x=crime_data$Crime)) + 
+  geom_boxplot()
+p + geom_point(aes(x=predict2[[1]], y = 0), colour="blue")
+```
+
+At last, we have a crime rate that makes a little more sense!
+
+Now that we have two models, we will perform cross validation on them in order to
+
+```{r}
+
+#this library will perform CV for us
+library(DAAG)
+model1 <- cv.lm(crime_data, lm_model, m=5, seed=10, printit=F, plotit =F)
+model2 <- cv.lm(crime_data, lm_model2, m=5, seed=10, printit=F, plotit =F)
+
+#the model does not outpuut r^2, so we will have to calculate ourselves. The formula is 1-(Sum of Squared Errors/sumofsquared differences)
+SSres1 <- attr(model1,"ms")*nrow(crime_data)
+SSres2 <- attr(model2, 'ms')* nrow(crime_data)
+SStotal <- sum((crime_data$Crime - mean(crime_data$Crime))^2)
+
+rs1 <- 1- SSres1/SStotal
+rs2 <- 1-SSres2/SStotal
+
+print(c(rs1,rs2))
+
+summary(model1)
+```
+
+As we can see in the above output, model 1 (using all 15 factors), the given dimensions accounts for only 40% of the variance. The second model, with only dimensions with a p-value of .15 or less, gives us a model where 69% of the variance in the crime is predicted by the inputted dimensions. As such, I have concluded the second model is stronger and we will report using that model.

@@ -1,0 +1,253 @@
+# Question 10.2
+
+Describe a situation or problem from your job, everyday life, current events, etc., for which a logistic regression model would be appropriate. List some (up to 5) predictors that you might use.
+
+> I am in the micromasters program, and I would like to know what my percent chance is to get accepted as a full time student. There is an aggregated listing of applicants information and admissinos decision at <https://docs.google.com/spreadsheets/d/1CaP7qBUorLHnGUJK9dle6xlqLhCDQkrPQ2lbeVwSMy4/edit#gid=0> that is aggregated from reddit.com
+>
+> Some predictors I could use based on that dataset would be
+>
+> 1.  Undergraduate GPA
+> 2.  Whether I applied early or not
+> 3.  Years of experience
+> 4.  Whether I have taken the gmat
+> 5.  Whether I will have completed the MM program
+> 6.  Hot encoding of what my undergrad was in
+
+# Question 10.3a
+
+*Using the GermanCredit data set germancredit.txt from <http://archive.ics.uci.edu/ml/machine-learning-databases/statlog/german> / (description at <http://archive.ics.uci.edu/ml/datasets/Statlog+%28German+Credit+Data%29> ), use logistic regression to find a good predictive model for whether credit applicants are good credit risks or not. Show your model (factors used and their coefficients), the software output, and the quality of fit. You can use the glm function in R. To get a logistic regression (logit) model on data where the response is either zero or one, use family=binomial(link="logit") in your glm function call.*
+
+> See below analysis for model output.
+>
+> The formula for the m3 model is y = A11A14\*-1.43 + X6\*0.022 + A34A34\*-0.641 + A43A41\*-1.376 + A43A43\*-0.966 + A43A49\*-0.519 + X1169\*0 + A65A65\*-0.628 + X4\*0.351 + A93A93\*-0.422 + A143A143\*-0.632 + A201A202\*-1.846+-1.07
+>
+> Using a threshold of .5, it correctly classifies loans 73% of the time.
+
+# Question 10.3b
+
+*Because the model gives a result between 0 and 1, it requires setting a threshold probability to separate between "good" and "bad" answers. In this data set, they estimate that incorrectly identifying a bad customer as good, is 5 times worse than incorrectly classifying a good customer as bad. Determine a good threshold probability based on your model.*
+
+> If we wish to use the optimal threshold assuming incorrectly identifying a bad customer as good, is 5 times worse than incorrectly classifying a good customer as bad, then a threshold of .2 gives us the lowest cost.
+
+# Analysis
+
+## Question 10.3a
+
+First import the data and a package we will use alter
+
+```{r}
+library(dplyr)
+data <- read.csv('germancredit.txt', sep =  ' ')
+```
+
+Now look at the structure
+
+```{r}
+str(data)
+```
+
+The question tells us that the response variable needs to be either 0 or 1, so let's go ahead and convert that into 0 and 1 instead of 1 and 2
+
+```{r}
+data$X1.1[data$X1.1 == 1]<-0
+data$X1.1[data$X1.1 == 2]<-1
+```
+
+And now separate our data into training and test data
+
+set.seed(1)
+
+sample_size \<- floor(.7 \* nrow(data))
+
+train_ind \<- sample(seq_len(nrow(data)), size = sample_size)
+
+train \<-data[train_ind,]
+
+test \<- data[-train_ind,]
+
+colnames(train)
+
+```{r}
+set.seed(1)
+
+
+sample_size <- floor(.7 * nrow(data))
+
+train_ind <- sample(seq_len(nrow(data)), size = sample_size)
+train <-data[train_ind,]
+test <- data[-train_ind,]
+colnames(train)
+```
+
+```{r}
+m1 <- glm(X1.1~., data = data, family=binomial(link='logit'))
+summary(m1)
+```
+
+Wow, a lot of the variables have coefficients that have very high p value. So lets go ahead and create a new model, excluding any variable with p values greater than .05. I am going to write this as a function since we will probably need to do this a few times. The below function takes in two args, a glm model and a pvalue to fiulter on, and it outputs a new formula object that we can pass to our next model
+
+```{r}
+write_formula <- function(glm_model, pvalue_filter) {
+          coeff <- data.frame(pvalue = (summary(glm_model)$coefficients)[,4])
+          formula <- as.formula(paste("X1.1 ~ ", paste(rownames(filter(coeff, pvalue < pvalue_filter)), collapse = " + ")))
+  return(formula)
+}
+```
+
+```{r}
+m2.formula <- write_formula(m1, .05)
+m2.formula
+
+```
+
+Now, let's create a second model using only these predictors:
+
+```{r,, error = T}
+m2 <- glm(m2.formula, data = train, family=binomial(link='logit'))
+```
+
+Uh oh, we get an error message! Where did A11A13 come from? That's not one of the columns in our original dataset! Well, if we look back at the output of our first glm call, we see we have a lot of new values in our coefficients. What glm did was "hot encode" our data. What that means is for categorical variables, lets say column 1 has values of A, B, and C. Instead of having one column, we transform the data to have three columns, 1A, 1B, and 1C. And the new values are either a one or a zero. Here is a good article summarizing hot encoding. <https://datatricks.co.uk/one-hot-encoding-in-r-three-simple-methods>
+
+Essentially, this allows us to further break down our categorical features to be able to tell which individual category is relevant to the model as a whole.
+
+To be able to generate a new model with these new columns, we need to transform our dataset to be hot encoded. There is fortunately several packages that do this for us.
+
+```{r}
+
+library(caret)
+dummy <- dummyVars(" ~ .", data=data)
+data.hot <- as.data.frame(predict(dummy, newdata=data))
+
+train.hot <-data.hot[train_ind,]
+test.hot <- data.hot[-train_ind,]
+
+
+str(data.hot)
+
+```
+
+Now we can try the glm call again.
+
+```{r}
+m2 <- glm(m2.formula, data = train.hot, family=binomial(link='logit'))
+summary(m2)
+```
+
+The new model has some p values that are above .05, so lets do the same process again of stripping those out and generating a new model.
+
+```{r}
+m3.formula <- write_formula(m2, .05)
+m3 <- glm(m3.formula, data = train.hot, family=binomial(link='logit'))
+summary(m3)
+```
+
+```{r}
+coefficients_for_answer<- as.data.frame((m3)$coefficients)
+coefficients_for_answer.joined <- data.frame(paste(rownames(coefficients_for_answer),round(coefficients_for_answer[,1],3),sep = '*'))
+paste(sapply(list(coefficients_for_answer.joined[-1,]), paste, collapse = ' + '), round(coefficients_for_answer[1,1],3), sep = '+')
+
+
+```
+
+Ignoring the confusing r code (which just combines our coefficients into a readable format), our final formula is
+
+    y = A11A14*-1.43 + X6*0.022 + A34A34*-0.641 + A43A41*-1.376 + A43A43*-0.966 + A43A49*-0.519 + X1169*0 + A65A65*-0.628 + X4*0.351 + A93A93*-0.422 + A143A143*-0.632 + A201A202*-1.846+-1.07
+
+Now that none of the variables have a p value greater than .05, lets use our validation data to estimate model quality. Lets first create a confusion matrix, then calculate the accuracy, as defined by (TN + TP)/((TN + TP+FN + FP)
+
+```{r}
+yhat <- predict(m3, test.hot, type = 'response')
+yhat.bool <- as.integer(yhat > 0.5)
+matrix <- table(yhat.bool, test$X1.1)
+
+accuracy <- (matrix[1,1] + matrix[2,2]) / sum(matrix)
+accuracy
+```
+
+So how do we know that .5 is the right threshold to round the data at? One way to determine this is to use an ROC graph.
+
+One way to do that is to loop over different values and see what gives us the highest accuracy.
+
+```{r}
+
+results.accuracy <- c()
+results.threshold <- c()
+
+for (i in seq_along(1:100)){
+yhat.loop <- predict(m3, test.hot, type = 'response')
+yhat.bool.loop <- as.integer(yhat.loop > i/100)
+matrix.loop <- table(yhat.bool.loop, test$X1.1)
+
+if(nrow(matrix.loop)>1) { c <- matrix.loop[2,2] } else { c <- 0 }
+
+results.accuracy[i] <- (matrix.loop[1,1] + c) / sum(matrix.loop)
+results.threshold[i] <- i/100
+}
+
+results.df<- as.data.frame(cbind(results.accuracy,results.threshold))
+results.df[which.max(results.df[,1]),]
+```
+
+Looks like a threshold of .39 gives us the highest accuracy.
+
+What if we wanted to compare this model against other models? ROC curves give us that ability.
+
+```{r}
+library(pROC)
+
+par(pty = "s")
+r.m3<-roc(test.hot$X1.1,yhat, plot=TRUE, legacy.axes=TRUE, percent=TRUE, xlab="False Positive Percentage", ylab="True Postive Percentage", col="#377eb8", lwd=4)
+
+
+```
+
+The above graph is different threshold values plotted showing their resulting TP and FP percents. If we wanted to pull out a metric to compare to other models, would compare the area under chart.
+
+```{r}
+par(pty = "s")
+r.m3<-roc(test.hot$X1.1,yhat, plot=TRUE, legacy.axes=TRUE, percent=TRUE, xlab="False Positive Percentage", ylab="True Postive Percentage", col=1, lwd=4,print.auc=T)
+
+m1.yhat <- predict(m1, test, type = 'response')
+r.m1<-roc(test.hot$X1.1,m1.yhat, plot=TRUE, legacy.axes=TRUE, percent=TRUE, xlab="False Positive Percentage", ylab="True Postive Percentage", col=2, lwd=4, add=T, print.auc=T, print.auc.y = 40)
+
+m2.yhat <- predict(m2, test.hot, type = 'response')
+r.m2<-roc(test.hot$X1.1,m2.yhat, plot=TRUE, legacy.axes=TRUE, percent=TRUE, xlab="False Positive Percentage", ylab="True Postive Percentage", col=3, lwd=4, add=T, print.auc=T, print.auc.y = 30)
+
+legend("bottomright", legend=c('m3', 'm1', 'm2'), col=c(1,2,3), lwd=4)
+```
+
+Interestingly enough, model 1, the model that used all of the features, has the highest AUC! So it was maybe not the best idea to remove all of those parameters.
+
+## Question 10.3b Analysis
+
+One thing AUC ignores though is the different cost of the outcomes. How would we compare the models or different thresholds if different outcomes had different losses associated with them?
+
+One way is to associate a cost to each quadrant of the confusion matrix. Since our above analysis was all based on m3, I will use that model for the below analysis, even though it is not the best model.
+
+```{r}
+
+loss_list <- c()
+
+for (i in seq(100)){
+yhat <- predict(m3, test.hot, type = 'response')
+yhat.bool <- as.integer(yhat > i/100)
+matrix <- table(yhat.bool, test$X1.1)
+
+
+  if(nrow(matrix)>1){cost <- matrix[2,1]} 
+    else { cost <- 0 }
+  if(ncol(matrix)>1){cost2 <- matrix[1,2]} 
+    else { cost2 <- 0 }
+  loss_list$loss[i] <-(cost + cost2*5)
+  loss_list$threshold[i] <- i/100
+}
+
+loss_list <- as.data.frame(loss_list)
+plot(x = loss_list$threshold, y = loss_list$loss)
+```
+
+```{r}
+loss_list[which.min(loss_list$loss),]
+```
+
+As we see above, if we wish to use the optimal threshold assuming incorrectly identifying a bad customer as good, is 5 times worse than incorrectly classifying a good customer as bad, then a threshold of .2 gives us the lowest cost.

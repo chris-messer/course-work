@@ -1,0 +1,79 @@
+## Random Forest Analysis
+
+```{r}
+library(randomForest)
+```
+
+```{r}
+set.seed(1)
+data <- read.csv('uscrime.txt', sep = '\t')
+str(data)
+#data$So <- as.factor(data$So)
+
+```
+
+```{r}
+m1 <- randomForest(Crime~., data = data, importance = T)
+m1
+```
+
+So the output of this model tells us that that r^2^ value of the model is .403, or put another way, 40.3% of the variance is explained by our model.
+
+Let's manually recalculate our r^2^ just as a sanity check and to confirm the model is telling us what we think it is.
+
+```{r}
+yhat<- predict(m1)
+
+SSres1 <- sum((yhat-data$Crime)^2)
+SStotal1 <- sum((data$Crime - mean(data$Crime))^2)
+rs1 <- 1- SSres1/SStotal1
+rs1
+```
+
+Yep! Same r^2^ value as the model returned.
+
+There is not a lot we can change about the inputs to the random forest model, since ultimately a random forest model is the cumulative output of lots and lots of smaller individual trees, thus, essentially, all of the possible factors like #of terminal nodes, are being exhaustively tried by the random forest ,and we are seeing the output of that.
+
+However, to evaluate the model, we can compare to the earlier regression tree model we found. To do so will require a little more work, since our earlier model we reported the accuracy by measuring the r^2^ value of a cross validated linear model for data points \< 7.65 Po1 and a separate r^2^ for data points \> than 7.65 Po1.
+
+So to compare to our earlier model, we would need to find two r^2^ values for this model, based on the Po1 value of each data point. AND, we would need to perform some sort of validation for each model.
+
+```{r}
+m2a.ssres <- 0
+m2b.ssres <- 0 
+m2a.sstot <- 0
+m2b.sstot <- 0
+
+for (i in seq(nrow(data))){
+  m2 <- randomForest(Crime~., data[-i,])
+  m2.yhat <- predict(m2, newdata=data[i,])
+  
+  if (data[i,]$Po1 < 7.65) {
+  m2a.ssres <- m2a.ssres + (m2.yhat - data[i,16])^2
+  m2a.sstot <- m2a.sstot + (data[i,16] -mean(data$Crime))^2
+  }
+  
+  else {
+  m2b.ssres <- m2b.ssres + (m2.yhat - data[i,16])^2
+  m2b.sstot <- m2b.sstot + (data[i,16] -mean(data$Crime))^2
+  }
+  
+  
+}
+
+m2a.r2 <- 1 - m2a.ssres/m2a.sstot
+m2b.r2 <- 1 - m2b.ssres/m2b.sstot
+print(c(m2a.r2,m2b.r2))
+```
+
+And there it is, our r^2^ values for comparison against our single tree. A single tree with a regression model gave us an r^2^ of .57 for data points with a Po1 value \<7.65, and .71 for data points wwith a Po1 \> 7.65.
+
+Compared to a random forest model, which gave .65 for data points with a Po1 \< 7.65 and .35 for points with Po1 \>7.65.
+
+So what model do we choose? It depends on our desired outcome. We may desire to use a blended approach - a single tree/regression model for values with Po1 \> 7.65, as that gave us the most accurate model (even after cross validation). And then we could use a random forest model for data points with Po1 \<7.65. But we do lose something here- we lose explain ability. With single tree models, it is a lot easier to explain to an end user or decision maker how you are coming up with your estimates compared to a random forest model.
+
+We do get some visibility into random forest models though, so lets look into that. According to the function documentation, the higher the value of either measure, the more important the variable is. As seen in both measures, Po1 is the most important. this makes sense, given how correlated Po1 is with crime rate as seen in previous weeks assignments.
+
+```{r}
+importance(m1)
+```

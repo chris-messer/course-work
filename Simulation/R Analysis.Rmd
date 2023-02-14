@@ -1,0 +1,121 @@
+---
+title: "Homework Week 9"
+author: "Chris Messer"
+date: "2022-10-22"
+output: html_document
+---
+
+# Question 12.1
+
+Question 12.1
+
+Describe a situation or problem from your job, everyday life, current events, etc., for which a design of experiments approach would be appropriate.
+
+> At work I frequently work with UI designers. They put together the webpage for a customer interface, and often times there are small design decisions like should we use a light red font over a dark red background, or White over black for the Sign up button? There are many small decisions on on e page that need to be made, but testing all of them would mean we get only a few sample responses for each combination of factors. Using a DoE approach would allow us to test only a few combinations and see which provides the best customer response.
+
+# Question 12.2
+
+To determine the value of 10 different yes/no features to the market value of a house (large yard, solar roof, etc.), a real estate agent plans to survey 50 potential buyers, showing a fictitious house with different combinations of features. To reduce the survey size, the agent wants to show just 16 fictitious houses. Use R's FrF2 function (in the FrF2 package) to find a fractional factorial design for this experiment: what set of features should each of the 16 fictitious houses have? Note: the output of FrF2 is "1" (include) or "-1" (don't include) for each feature.
+
+## Answer
+
+First, load the package and set the seed
+
+```{r}
+library('FrF2')
+set.seed(1)
+
+```
+
+According to the documentation, we just need to supply two variables here. 1st, we need to supply the number of runs, which in our example is the number of houses we want to show. Then we need to supply the numbers of factors, which in our example is the number of features we are considering.
+
+```{r}
+FrF2(nruns = 16,nfactors = 10)
+```
+
+Now what does this output tell us? Each row is a house we will show, and each column is a feature of that house we should show. For example, the first house we should show should not have features with values of negative 1 in each of the columns.
+
+This simplistic example does ignore one issue in real life though. This example assumes we have 10 factorial number of houses to choose from (3,628,800), i.e. one house for every combination of features, so that we can choose our 16 houses to show. That is a lot of houses!
+
+# Question 13.1
+
+For each of the following distributions, give an example of data that you would expect to follow this distribution (besides the examples already discussed in class).
+
+a\. Binomial - Asking someone if they like grapes or oranges better. There is an equal liklihood that they choose either option.\
+b. Geometric - Number of times we had to roll a dice before a 4 is rolled\
+c. Poisson - Radioactive decay. Poisson is helpful when we know the average time betweenevents, but the exact time between each event is unknown. In radioactive decay, we may know that on average 3 atoms decay every second, but we don't know the exact spacing between each decay\
+d. Exponential - the amount of time until an earthquake occurs. This is similar to poisson, but instead of the number of occurences in a time frame, exponential distribution deals with the time between occurrences.\
+e. Weibull - Time until a part of a machine fails. This distribution is similar to geometric distribution, but it models time until an event occurs rather than occurences until an event occurs.
+
+# Question 13.2
+
+In this problem you, can simulate a simplified airport security system at a busy airport. Passengers arrive according to a Poisson distribution with λ1 = 5 per minute (i.e., mean interarrival rate 1 = 0.2 minutes) to the ID/boarding-pass check queue, where there are several servers who each have exponential service time with mean rate 2 = 0.75 minutes. [Hint: model them as one block that has more than one resource.] After that, the passengers are assigned to the shortest of the several personal-check queues, where they go through the personal scanner (time is uniformly distributed between 0.5 minutes and 1 minute).
+
+Use the Arena software (PC users) or Python with SimPy (PC or Mac users) to build a simulation of the system, and then vary the number of ID/boarding-pass checkers and personal-check queues to determine how many are needed to keep average wait times below 15 minutes. [If you're using SimPy, or if you have access to a non-student version of Arena, you can use λ1 = 50 to simulate a busier airport.]
+
+> There are a large number of combinations that could work to keep wait times under 15 minutes. For a slow airport, you need at least 3 scanners/4 Checkers or 4 scanners and 3 checkers.
+>
+> For a fast airport, you need closer to at least 35 scanners and 31 checkers when lambda = 50.
+
+# Analysis
+
+I have used SimPy for this analysis. I will include the code at the bottom of this document. The output of that code is two matricies, one for a slow airport (lambda = 5) and one for a busy airport (lambda = 50). Here, in R, I'll analyze those matricies to answer the question asked.
+
+First, lets bring in the data.
+
+```{r}
+slow <- read.csv('airport/slow.csv')
+fast <- read.csv('airport/fast.csv')
+```
+
+I think a heat map would be a good way to visualize this to see what combination of checkers and scanners would work. Lets try it.
+
+```{r}
+library(ggplot2)
+
+ggplot(slow, aes(x=slow[,1], y=slow[,2], fill= slow[,3])) + 
+  geom_tile()
+```
+
+The above is a little difficult to read, so lets make the heat map a binary map, where instead of showing us all values of wait times, it just tells us if that combination of scanners/checkers resulted in a wait time less that 15 minutes.
+
+```{r}
+slow$passing <- 'Wait Time > than 15 min'
+slow[slow$wait_time <= 15,]$passing <- 'Wait Time < than 15 min'
+slow$passing <- factor(slow$passing)
+ggplot(slow, aes(x=numScanners, y=numCheckers, fill= passing)) + 
+  geom_tile()
+```
+
+Even this is a little difficult to read, so lets chop out some of the higher end of scanner/checker combinations since they all pass.
+
+```{r}
+slow.ten <- slow[(slow$numScanners <=10 & slow$numCheckers <= 10),]
+
+ggplot(slow.ten, aes(x=numCheckers, y=numScanners, fill= passing)) + 
+  geom_tile()
+```
+
+Now we can clearly see what combinations of checkers and scanners result in wait times less than 15 minutes.
+
+Now lets do the same for the busy airport.
+
+```{r,  figures-side, fig.show="hold", out.width="50%"}
+fast$passing <- 'Wait Time > than 15 min'
+fast[fast$wait_time <= 15,]$passing <- 'Wait Time < than 15 min'
+fast$passing <- factor(fast$passing)
+
+
+ggplot(fast, aes(x=numScanners, y=numCheckers, fill= wait_time)) + 
+  geom_tile()
+ggplot(fast, aes(x=numScanners, y=numCheckers, fill= passing)) + 
+  geom_tile()
+```
+
+I really enjoyed this simulation assignment! Some other cool things we could have done:
+
+-   We could build a logistic regression model based on our simulation results, and in real life we could bake this into our staffing tool. For example, I as a manager, would like to know if I were to staff the airport with 13 scanners, and 8 checkers on a Wednesday, what is the likelihood that wait times will be less than 15 minutes?
+
+-   We could bring in more data to our simulation like different distributions for different days of the week
+
+-   We could use real data from prior history at the airport to estimate passenger arrival times, and smooth the data out with HW exponential smoothing, and so much more
